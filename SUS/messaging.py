@@ -61,6 +61,7 @@ class InboxServer:
 
     def handle_message(self, message, sender):
         incoming_messages.append((sender, message))
+        return 200
 
 
 class OutboxSender:
@@ -72,7 +73,8 @@ class OutboxSender:
     def start(self):
         while not self.stop.is_set():
             for message in self.watch:
-                t = threading.Thread(target=self.send_message, args=(message[0], message[1]))
+                t = threading.Thread(target=self.send_message,
+                                     args=(message[0], message[1]))
                 t.start()
 
     def send_message(self, recipient, message):
