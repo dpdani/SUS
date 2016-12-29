@@ -19,16 +19,23 @@
 import socket
 import threading
 import collections
+import logging
+
+
+logger = logging.getLogger('messaging')
 
 
 incoming_messages = collections.deque()
 outgoing_messages = collections.deque()
 
 
+SUS_MESSAGES_PORT = 6666
+
+
 class InboxServer:
     def __init__(self, ip, inactivity_timeout=2, buffer_size=1024):
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server.bind((ip, 6666))
+        self.server.bind((ip, SUS_MESSAGES_PORT))
         self.inactivity_timeout = inactivity_timeout
         self.buffer_size = buffer_size
         self.threads = []
@@ -36,32 +43,50 @@ class InboxServer:
 
     def listen(self):
         self.server.listen(5)
+        logger.info('inbox server listening at {}.'.format(self.server))
         while not self.stop.is_set():
             client, address = self.server.accept()
             client.settimeout(self.inactivity_timeout)
             thread = threading.Thread(target=self.serve_client, args=(client, address))
             thread.start()
             self.threads.append(thread)
+        logger.info('stop set. Inbox is shutting down.')
 
     def serve_client(self, client, address):
         # logging?
-        received = []
-        while not self.stop.is_set():
-            fragment = client.recv(self.buffer_size)
-            if fragment == b'':
-                break
-            received.append(fragment.decode('utf-8'))
+        logger.info('connected to {}:{}.'.format(address[0], address[1]))
+        received = ''
+        try:
+            while not self.stop.is_set():
+                fragment = client.recv(self.buffer_size)
+                if fragment == b'':
+                    break
+                received = ''.join([received, fragment.decode('utf-8')])
+                if received.rstrip().endswith('##END'):
+                    break
+        except socket.error as exc:
+            self.closed_connection(address, exc)
+            return
         if not self.stop.is_set():
-            received = ''.join(received)
             client.sendall(b'OK\n')
             client.sendall(str(
                 self.handle_message(received, address[0])
             ).encode('utf-8'))
         client.close()
+        self.closed_connection(address)
 
     def handle_message(self, message, sender):
+        logger.info('new message from <{}>: "{}"'.format(sender, message))
         incoming_messages.append((sender, message))
         return 200
+
+    @staticmethod
+    def closed_connection(address, exception=None):
+        if exception is None:
+            logger.info('closed connection to {}:{}.'.format(address[0], address[1]))
+        else:
+            logger.info('closed connection to {}:{} due to error <{}>: {}.'.format(
+                address[0], address[1], exception.__class__.__name__, exception))
 
 
 class OutboxSender:
@@ -71,15 +96,36 @@ class OutboxSender:
         self.stop = threading.Event()
 
     def start(self):
+        logger.info('outbox started. Watching {}.'.format(self.watch))
         while not self.stop.is_set():
-            for message in self.watch:
-                t = threading.Thread(target=self.send_message,
-                                     args=(message[0], message[1]))
-                t.start()
+            if len(self.watch) <= 0:
+                continue
+            message = self.watch.popleft()
+            t = threading.Thread(target=self.send_message, args=(message,))
+            t.start()
+        logger.info('stop set. Outbox is shutting down.')
 
-    def send_message(self, recipient, message):
-        conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        conn.connect((recipient, 6666))
+    def send_message(self, message):
+        recipient = message[0]
+        message = message[1]
+        logger.info('sending message "{}" to <{}>.'.format(message, recipient))
+        try:
+            conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            conn.connect((recipient, SUS_MESSAGES_PORT))
+        except:
+            self.handle_not_sent((recipient, message))
+            return
         if not self.stop.is_set():
             conn.sendall(message.encode('utf-8'))
+            conn.sendall(b'##END')
+            received = conn.recv(100).decode('utf-8')
+            if 'OK\n200' not in received:
+                self.handle_not_sent((recipient, message))
+                logger.info('correctly sent message.')
+        else:
+            self.handle_not_sent((recipient, message))
         conn.close()
+
+    def handle_not_sent(self, message):
+        logger.info('message not sent.')
+        self.watch.appendleft(message)
