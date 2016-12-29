@@ -18,6 +18,42 @@
 
 import sys
 import argparse
+import logging
+import logging.config
+
+
+logging.config.dictConfig({
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'default': {
+            'format': '%(levelname)s|%(asctime)s|%(name)s L%(lineno)d:   %(message)s'
+        }
+    },
+    'handlers': {
+        'file': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'formatter': 'default',
+            'filename': '/tmp/SUS.log',
+            'maxBytes': 10000,
+            'backupCount': 1
+        },
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'default'
+        }
+    },
+    'loggers': {
+        '': {
+            'handlers': ['file', 'console'],
+            'level': 'DEBUG',
+            'propagate': True
+        }
+    }
+})
+
+
+logger = logging.getLogger('main')
 
 
 class SUS:
@@ -38,6 +74,7 @@ Service commands:
 
 Type `SUS <command> --help` for information about specific commands.
 ''')
+        logger.info('SUS started. Args: {}'.format(sys.argv))
         if len(sys.argv) == 1:
             self.interactive_mode()
             return
@@ -53,13 +90,20 @@ Type `SUS <command> --help` for information about specific commands.
     def start(self):
         import SUSd
         args = argparse.ArgumentParser(prog='SUS start')
-        args.parse_args(sys.argv[2:])
+        args.add_argument('-n', '--non-daemon', help='start SUS in non-daemon mode.',
+                          action='store_true')
+        args.add_argument('-i', '--ip', help='ip for SUS services.', default='',
+                          action='store')
+        args = args.parse_args(sys.argv[2:])
+        print(dir(args))
         SUSd.start(args)
 
     def shutdown(self):
         import SUSd
         args = argparse.ArgumentParser(prog='SUS shutdown')
-        args.parse_args(sys.argv[2:])
+        args.add_argument('-k', '--kill', help='send SIGKILL instead of SIGTERM.',
+                          action='store_true')
+        args = args.parse_args(sys.argv[2:])
         SUSd.shutdown(args)
 
     def send(self):
