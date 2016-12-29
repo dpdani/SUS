@@ -23,6 +23,7 @@ import signal
 import threading
 import os
 import logging
+import sys
 
 
 logger = logging.getLogger('SUSd')
@@ -58,6 +59,7 @@ def start(args):
                     logging.root.handlers[0].stream.fileno(),
                     # sys.stderr.fileno(), sys.stdout.fileno(), sys.stdin.fileno()
                 ],
+                stdout=sys.stdout,
             ):
                 run(args)
     else:
@@ -104,16 +106,20 @@ def run(args):
     inbox.stop = stop
     inbox_thread = threading.Thread(target=inbox.listen, name='Inbox')
     inbox_thread.start()
-    logger.debug('inbox started.')
     outbox = messaging.OutboxSender()
     outbox.stop = stop
     outbox_thread = threading.Thread(target=outbox.start, name='Outbox')
     outbox_thread.start()
-    logger.debug('outbox started.')
+    newmessages = messaging.NewMessagesHandlerStdout()
+    newmessages.stop = stop
+    newmessages_thread = threading.Thread(target=newmessages.start, name='NewMessagesHdlr')
+    newmessages_thread.start()
+    logger.info('done setting up messaging services.')
 
     # threads only join when stopped by a SIGTERM -> shutdown
     inbox_thread.join()
     outbox_thread.join()
+    newmessages_thread.join()
     for t in inbox.threads:
         t.join(timeout=0.5)
     for t in outbox.threads:

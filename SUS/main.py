@@ -95,7 +95,8 @@ Type `SUS <command> --help` for information about specific commands.
         args.add_argument('-i', '--ip', help='ip for SUS services.', default='',
                           action='store')
         args = args.parse_args(sys.argv[2:])
-        print(dir(args))
+        if not args.non_daemon:  # if in daemon mode
+            logging.root.handlers.pop(1)  # remove console logging
         SUSd.start(args)
 
     def shutdown(self):

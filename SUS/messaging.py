@@ -76,6 +76,7 @@ class InboxServer:
         self.closed_connection(address)
 
     def handle_message(self, message, sender):
+        message = message.replace('##END', '').strip()
         logger.info('new message from <{}>: "{}"'.format(sender, message))
         incoming_messages.append((sender, message))
         return 200
@@ -129,3 +130,18 @@ class OutboxSender:
     def handle_not_sent(self, message):
         logger.info('message not sent.')
         self.watch.appendleft(message)
+
+
+class NewMessagesHandlerStdout:
+    """ Handles new messages found in incoming_messages. """
+    def __init__(self, watch=incoming_messages):
+        self.watch = watch
+        self.stop = threading.Event()
+
+    def start(self):
+        logger.info('{} started.'.format(self.__class__.__name__))
+        while not self.stop.is_set():
+            if len(self.watch) <= 0:
+                continue
+            message = self.watch.popleft()
+            print('\n\nSUS> {}: {}\n'.format(message[0], message[1]))
