@@ -22,6 +22,11 @@ import lockfile
 import signal
 import threading
 import os
+import logging
+
+
+logger = logging.getLogger('SUSd')
+logger.info('SUSd loaded.')
 
 
 stop = threading.Event()
@@ -30,25 +35,39 @@ stop = threading.Event()
 def start(args):
     """ Start the daemon, if not already running. """
     # args: as given from argparse
+    logger.info('attempting start.')
     try:
         pidfile = daemon.runner.make_pidlockfile('/tmp/SUS.pid', acquire_timeout=1)
     except lockfile.LockTimeout:
+        logger.info('start failed: lockfile timed out.')
         print('error>  SUS is already running!')
         return
     if not pidfile.is_locked():
+        logger.info('start successful.')
         print('SUS>  :)')
-        with daemon.DaemonContext(
+        if args.non_daemon:
+            run(args)
+        else:
+            with daemon.DaemonContext(
                 pidfile=pidfile,
-                signal_map={ signal.SIGTERM: close },
-        ):
-            run()
+                signal_map={
+                    signal.SIGTERM: close,
+                    signal.SIGTSTP: close,
+                },
+                files_preserve=[
+                    logging.root.handlers[0].stream.fileno(),
+                    # sys.stderr.fileno(), sys.stdout.fileno(), sys.stdin.fileno()
+                ],
+            ):
+                run(args)
     else:
+        logger.info('start failed: lockfile locked.')
         print('error>  SUS is already running!')
         return
 
 
 def close(signum, frame):
-    """ Catches SIGTERM. """
+    """ Catches SIGTERM and SIGTSTP. """
     stop.set()
 
 
@@ -61,10 +80,41 @@ def shutdown(args):
     except:
         print("error>  SUS isn't running!")
         return
-    os.kill(pid, signal.SIGTERM)
+    try:
+        if args.kill:
+            os.kill(pid, signal.SIGKILL)
+            os.remove('/tmp/SUS.pid')
+            logger.info('sent SIGKILL to {}.'.format(pid))
+        else:
+            os.kill(pid, signal.SIGTERM)
+            logger.info('sent SIGTERM to {}.'.format(pid))
+    except ProcessLookupError:
+        print("error>  SUS isn't running!")
+        return
     print('SUS>  :(')
 
 
-def run():
-    while not stop.is_set():
-        pass
+def run(args):
+    global stop
+
+    logger.info('setting up messaging services.')
+    # Setting up messaging services
+    import messaging
+    inbox = messaging.InboxServer(ip=args.ip)
+    inbox.stop = stop
+    inbox_thread = threading.Thread(target=inbox.listen, name='Inbox')
+    inbox_thread.start()
+    logger.debug('inbox started.')
+    outbox = messaging.OutboxSender()
+    outbox.stop = stop
+    outbox_thread = threading.Thread(target=outbox.start, name='Outbox')
+    outbox_thread.start()
+    logger.debug('outbox started.')
+
+    # threads only join when stopped by a SIGTERM -> shutdown
+    inbox_thread.join()
+    outbox_thread.join()
+    for t in inbox.threads:
+        t.join(timeout=0.5)
+    for t in outbox.threads:
+        t.join(timeout=0.5)
