@@ -37,15 +37,11 @@ logging.config.dictConfig({
             'filename': '/tmp/SUS.log',
             'maxBytes': 10000,
             'backupCount': 1
-        },
-        'console': {
-            'class': 'logging.StreamHandler',
-            'formatter': 'default'
         }
     },
     'loggers': {
         '': {
-            'handlers': ['file', 'console'],
+            'handlers': ['file'],
             'level': 'DEBUG',
             'propagate': True
         }
@@ -95,8 +91,10 @@ Type `SUS <command> --help` for information about specific commands.
         args.add_argument('-i', '--ip', help='ip for SUS services.', default='',
                           action='store')
         args = args.parse_args(sys.argv[2:])
-        if not args.non_daemon:  # if in daemon mode
-            logging.root.handlers.pop(1)  # remove console logging
+        if args.non_daemon:
+            logging.root.handlers.append(
+                logging.StreamHandler()
+            )  # add console logging
         SUSd.start(args)
 
     def shutdown(self):
@@ -108,7 +106,13 @@ Type `SUS <command> --help` for information about specific commands.
         SUSd.shutdown(args)
 
     def send(self):
-        print('send')
+        import SUSd
+        args = argparse.ArgumentParser(prog='SUS send')
+        args.add_argument('recipient', help='IP to which send the message.')
+        args.add_argument('message', nargs='+', help='message to send.')
+        args = args.parse_args(sys.argv[2:])
+        args.message = ' '.join(args.message).lstrip()
+        SUSd.send(args.recipient, args.message)
 
     def interactive_mode(self):
         print('interactive mode')

@@ -24,6 +24,7 @@ import threading
 import os
 import logging
 import sys
+import socket
 
 
 logger = logging.getLogger('SUSd')
@@ -70,7 +71,11 @@ def start(args):
 
 def close(signum, frame):
     """ Catches SIGTERM and SIGTSTP. """
+    import messaging
     stop.set()
+    socket.socket(socket.AF_INET, socket.SOCK_STREAM) \
+        .connect(('', messaging.SUS_MESSAGES_PORT))  # makes inboxsocket.accept return.
+                                                     # See messaging.InboxServer.listen
 
 
 def shutdown(args):
@@ -124,3 +129,27 @@ def run(args):
         t.join(timeout=0.5)
     for t in outbox.threads:
         t.join(timeout=0.5)
+    logger.info('SUS is shutting down.')
+
+
+def send(recipient, message):
+    if message.find('##END') > -1:
+        print('error>  cannot have "##END" inside of message.')
+        return
+    logger.info('sending "{}" to <{}>.'.format(message, recipient))
+    import messaging
+    recipient_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        recipient_socket.connect((recipient, messaging.SUS_MESSAGES_PORT))
+    except socket.error:
+        print('SUS>  remote host unresponsive.')
+        return
+    recipient_socket.sendall(message.encode('utf-8'))
+    recipient_socket.sendall(b'##END')
+    print('SUS>  ✓')
+    status = recipient_socket.recv(1024)
+    recipient_socket.close()
+    # if status == b'OK\n200':
+    #    print('SUS> message sent.')
+    # else:
+    #     print('SUS>  error on accepting message.')
