@@ -30,10 +30,5 @@ SUS> xor-Nand: sis
 $ SUS slience xor-Nand
 ```
 
-Or open the fully-featured terminal client simply by typing:
-```
-$ SUS
-```
-
 ## Footnote
 This repo contains homework for Systems and Networks.
