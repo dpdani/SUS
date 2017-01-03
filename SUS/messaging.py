@@ -122,7 +122,9 @@ class OutboxSender:
             received = conn.recv(100).decode('utf-8')
             if 'OK\n200' not in received:
                 self.handle_not_sent((recipient, message))
+            else:
                 logger.info('correctly sent message.')
+                print('SUS>  ✓')
         else:
             self.handle_not_sent((recipient, message))
         conn.close()
@@ -144,4 +146,4 @@ class NewMessagesHandlerStdout:
             if len(self.watch) <= 0:
                 continue
             message = self.watch.popleft()
-            print('\n\nSUS> {}: {}\n'.format(message[0], message[1]))
+            print('\n\nSUS> {}: {}'.format(message[0], message[1]))
