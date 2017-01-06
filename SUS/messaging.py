@@ -29,6 +29,9 @@ incoming_messages = collections.deque()
 outgoing_messages = collections.deque()
 
 
+last_received_sender = None
+
+
 SUS_MESSAGES_PORT = 6666
 
 
@@ -51,9 +54,11 @@ class InboxServer:
             thread.start()
             self.threads.append(thread)
         logger.info('stop set. Inbox is shutting down.')
+        for t in self.threads:
+            t.join(timeout=0.5)
 
     def serve_client(self, client, address):
-        # logging?
+        global last_received_sender
         logger.info('connected to {}:{}.'.format(address[0], address[1]))
         received = ''
         try:
@@ -72,6 +77,7 @@ class InboxServer:
             client.sendall(str(
                 self.handle_message(received, address[0])
             ).encode('utf-8'))
+            last_received_sender = address[0]
         client.close()
         self.closed_connection(address)
 
@@ -105,6 +111,8 @@ class OutboxSender:
             t = threading.Thread(target=self.send_message, args=(message,))
             t.start()
         logger.info('stop set. Outbox is shutting down.')
+        for t in self.threads:
+            t.join(timeout=0.5)
 
     def send_message(self, message):
         recipient = message[0]
@@ -114,13 +122,14 @@ class OutboxSender:
             conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             conn.connect((recipient, SUS_MESSAGES_PORT))
         except:
+            print('SUS>  remote host unresponsive.')
             self.handle_not_sent((recipient, message))
             return
         if not self.stop.is_set():
             conn.sendall(message.encode('utf-8'))
             conn.sendall(b'##END')
             received = conn.recv(100).decode('utf-8')
-            if 'OK\n200' not in received:
+            if 'OK\n' not in received:
                 self.handle_not_sent((recipient, message))
             else:
                 logger.info('correctly sent message.')

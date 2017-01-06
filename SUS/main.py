@@ -114,6 +114,14 @@ Type `SUS <command> --help` for information about specific commands.
         args.message = ' '.join(args.message).lstrip()
         SUSd.send(args.recipient, args.message)
 
+    def reply(self):
+        import SUSd
+        args = argparse.ArgumentParser(prog='SUS reply')
+        args.add_argument('message', nargs='+', help='message to send.')
+        args = args.parse_args(sys.argv[2:])
+        args.message = ' '.join(args.message).lstrip()
+        SUSd.reply(args.message)
+
     def interactive_mode(self):
         print('interactive mode')
 
