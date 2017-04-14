@@ -18,7 +18,7 @@ import os
 
 # Add project files
 sys.path.append(
-    os.path.abspath('../SUS/')
+    os.path.abspath('../')
 )
 
 # If extensions (or modules to document with autodoc) are in another directory,
